@@ -178,122 +178,12 @@ dfCountryLatLong = globalRaw.filter(['Country/Region','Lat','Long'], axis=1)
 dfCountryTotalDeaths = dfCountryTotalDeaths.reset_index()
 dfCountryLatLong['Deaths'] = dfCountryTotalDeaths['Deaths'].copy()
 
-###CHARTS###
-# Choropleth map for US deaths
-usDeathMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=["Province_State:N", 'Deaths:O'],
-    color='Deaths:Q'
-).transform_lookup(
-    lookup='id',
-    from_=alt.LookupData(dfStateTotalDeaths, 'id', ['Deaths'])
-).project(
-    type='albersUsa'
-).properties(
-    width=900,
-    height=500
-)
-
-# Choropleth map for US cases
-usCaseMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=["Province_State:O", 'Cases:O'],
-    color='Cases:Q'
-).transform_lookup(
-    lookup='id',
-    from_=alt.LookupData(dfStateTotalCases, 'id', ['Cases'])
-).project(
-    type='albersUsa'
-).properties(
-    width=900,
-    height=500
-)
-
-#Here is a barchart with Average Deaths comparing all States
-avgDeaths = dfStateTotalDeaths["Deaths"].mean()
-bar = alt.Chart(dfStateTotalDeaths).mark_bar().encode(
-    x='Province_State:O',
-    y='Deaths:Q',
-    color=alt.condition(
-        alt.datum.Deaths > avgDeaths, 
-        alt.value('orange'),
-        alt.value('steelblue')
-    )
-)
-sortedbar = alt.Chart(dfStateTotalDeaths).mark_bar().encode(
-    x=alt.X('Province_State:O', sort='-y'),
-    y='Deaths:Q',
-    color=alt.condition(
-        alt.datum.Deaths > avgDeaths, 
-        alt.value('orange'),
-        alt.value('steelblue')
-    )
-)
-rule = alt.Chart(dfStateTotalDeaths).mark_rule(color='red').encode(
-    y='mean(Deaths):Q'
-)
-barChart = (bar + rule).properties(width=900, height = 500)
-sortedbarChart = (sortedbar + rule).properties(width=900, height = 500)
-
-#
-
-highlight = alt.selection(type='single', on='mouseover',
-                          fields=['Province_State'], nearest=True)
-
-deathsAllStatesbase = alt.Chart(deathChartDf).mark_line().encode(
-    #opacity=alt.value(0),
-    x='variable',
-    y='value',
-    color='Province_State:N',
-    tooltip=["Province_State:N", "value"]
-)
-
-deathsAllStatespoints = deathsAllStatesbase.mark_circle().encode(
-    opacity=alt.value(0)
-).add_selection(
-    highlight
-).properties(
-    width=900,
-    height=1000
-)
-
-deathsAllStateslines = deathsAllStatesbase.mark_line().encode(
-    size=alt.condition(~highlight, alt.value(1), alt.value(3))
-)
-
-deathsAllStates = deathsAllStatespoints + deathsAllStateslines
-
-# Line chart
-# Line chart base - ask team members about. Why do the base, points, and lines of the chart have to be created separately
-casesAllStatesbase = alt.Chart(caseChartDf).mark_line().encode(
-    x='variable',
-    y='value',
-    color='Province_State:N',
-    tooltip=["Province_State:N", "value"]
-)
-
-# Line chart points 
-casesAllStatespoints = casesAllStatesbase.mark_circle().encode(
-    opacity=alt.value(0)
-).add_selection(
-    highlight
-).properties(
-    width=900,
-    height=1000
-)
-
-casesAllStateslines = casesAllStatesbase.mark_line().encode(
-    size=alt.condition(~highlight, alt.value(1), alt.value(3))
-)
-
-# Line chart - why do the points and lines have to be created separately, then combined?
-casesAllStates = casesAllStatespoints + casesAllStateslines
-
-
 ############
 ## CHARTS ##
 ############
 # Choropleth map for US deaths
 usDeathMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=['Deaths:O'],
+    tooltip=['id:N', 'Deaths:O'],
     color='Deaths:Q'
 ).transform_lookup(
     lookup='id',
@@ -307,7 +197,7 @@ usDeathMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshap
 
 # Choropleth map for US cases
 usCaseMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=['Cases:O'],
+    tooltip=['id:N', 'Cases:O'],
     color='Cases:Q'
 ).transform_lookup(
     lookup='id',
@@ -546,7 +436,6 @@ with st.beta_expander('US Death to Case Ratio'):
     #Container for Death to Case Ratio
     st.subheader('Ratio of Deaths per Cases Across the United States')
     ratioDeathCase = st.beta_container()
-    ratioDeathCase.subheader('Ratio of Deaths to Cases in the United States')
     ratioDeathCase.write(usCaseDeathRatioMap)
     
 with st.beta_expander('US Case Data'):
