@@ -27,6 +27,14 @@ def load_raw_cases_csv():
     df.to_csv("covid_cases.csv")
     return df
 
+#Get Recorded World deaths csv from Official Github and return as Pandas dataframe
+@st.cache
+def load_raw_csv_global():
+    url2 = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+    df2 = pd.read_csv(url2)
+    df2.to_csv("world_deaths.csv")
+    return df2
+
 # This method returns a dataframe which columns with no recorded deaths in any state are dropped.
 def stateDeathsOverTime(raw):
     # Drop arbitrary columns (We can't .copy columns because each indivudal date is a column)
@@ -110,6 +118,40 @@ def userSelectedStateCases(selected):
     selectedDf = casesDf.loc[selected].copy()
     return selectedDf
 
+# This method returns a dataframe which columns with no recorded deaths in any state are dropped.
+def countryDeathsOverTime(globalRaw):
+    # Drop arbitrary columns
+    rawdf = globalRaw.drop(
+        ['Lat', 'Long'], 1)
+    # At this point we have a Dataframe of deaths for each country.
+    # Sum deaths to provide deaths per country/region
+    rawdf = rawdf.reset_index().groupby(['Country/Region']).sum()
+    # Deaths are recorded as a cumulative total. Not per day
+    # Some Columns are sum = 0, Remove these
+    countryDeathsOvertime = rawdf.loc[(rawdf.sum(axis=1) != 0), (rawdf.sum(axis=0) != 0)]
+    countryDeathsOvertime = countryDeathsOvertime.drop(['index'], 1)
+    return countryDeathsOvertime
+
+
+# This method starts by getting the dataframe with only columns containing deaths in them (From countryDeathOT()) and summing each row.
+def countryDeathTotal(globalRaw):
+    rawdf = countryDeathsOverTime(globalRaw)
+    # We need to access the most recent data entry (Last column) which will provide us total deaths per country
+    rawdf["Deaths"] = rawdf.iloc[:, -1:]
+    # Now we can create a Dataframe with only the countries and their cumulative deaths (dfCountryDeaths)
+    dfCountryDeaths = rawdf[["Deaths"]].copy()
+    return dfCountryDeaths
+
+
+def countryDeathsChart():
+    df = countryDeathsOverTime(load_raw_csv_global())
+    df = pd.melt(dfCountryDeathsOT, ignore_index=False)
+    df['variable'] = pd.to_datetime(df.variable)
+    df = df.sort_values(by=['Country/Region', 'value'])
+    df = df.reset_index('Country/Region')
+    return df
+
+
 # State death dataframe setup
 rawDeathsdf = load_raw_deaths_csv()
 dfStateDeathsOverTime = stateDeathsOverTime(rawDeathsdf)
@@ -125,6 +167,16 @@ caseChartDf = stateCaseChart(dfStateCasesOverTime)
 #Death to Cases Ratio dataframe setup
 dfStateCaseDeathRatio = pd.merge(dfStateTotalDeaths, dfStateTotalCases.drop(['id'], 1), on='Province_State')
 dfStateCaseDeathRatio['Ratio'] = dfStateCaseDeathRatio['Deaths']/dfStateCaseDeathRatio['Cases']
+
+#World death data setup
+globalRaw = load_raw_csv_global()
+dfCountryDeathsOT = countryDeathsOverTime(globalRaw)
+dfCountryTotalDeaths = countryDeathTotal(globalRaw)
+countryDeathsChart = countryDeathsChart()
+
+dfCountryLatLong = globalRaw.filter(['Country/Region','Lat','Long'], axis=1)
+dfCountryTotalDeaths = dfCountryTotalDeaths.reset_index()
+dfCountryLatLong['Deaths'] = dfCountryTotalDeaths['Deaths'].copy()
 
 ###CHARTS###
 # Choropleth map for US deaths
@@ -270,7 +322,7 @@ usCaseMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape
 # Choropleth map for US Deaths to Cases Ratio
 usCaseDeathRatioMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
     tooltip=['Ratio:O'],
-    color='Ratio:Q'
+    color=alt.Color('Ratio:Q', legend=alt.Legend(format=".0%"))
 ).transform_lookup(
     lookup='id',
     from_=alt.LookupData(dfStateCaseDeathRatio, 'id', ['Ratio'])
@@ -387,7 +439,22 @@ casesAllStateslines = casesAllStatesbase.mark_line().encode(
 # Line chart - why do the points and lines have to be created separately, then combined?
 casesAllStates = casesAllStatespoints + casesAllStateslines
 
-
+#WORLD MAP
+# worldDeathMap + pois need to be together to present to world data
+worldDeathMap = alt.Chart(alt.topo_feature(data.world_110m.url, "countries")).mark_geoshape(
+        fill='#ddd', stroke='#fff', strokeWidth=1.5
+    ).project(
+        type='equirectangular'
+    ).properties(
+        width=1000,
+        height=500
+    )
+pois = alt.Chart(dfCountryLatLong).mark_circle().encode(
+    latitude='Lat:Q',
+    longitude='Long:Q',
+    tooltip=["Country/Region:N", "Deaths"],
+    size="Deaths"
+)
 
 ########################
 # Streamlit App Layout #
@@ -402,144 +469,147 @@ allStates = dfStateTotalDeaths['Province_State'].values.tolist()
 deathCol, caseCol = st.beta_columns(2)
 #caseCol, deathCol = st.beta_columns(2)
 
-with st.beta_expander('Data to View: '):
+with st.beta_expander('Select States to compare: '): 
+    userSelectedStates = st.beta_container()
+    statesSelected = userSelectedStates.multiselect('What States do you want to compare?', allStates, allStates[0])
+
+    selectedStateDeaths = userSelectedStateDeaths(statesSelected)
+    selectedStateCases = userSelectedStateCases(statesSelected)
+
+
+    stateDeathsChart = stateDeathsChart(selectedStateDeaths)
+    stateCaseChart = stateCaseChart(selectedStateCases)
+
+    if userSelectedStates.checkbox('Compare Overall Deaths: '):
+        selectedStateTotalDeaths = selectedStateDeaths.copy()
+        selectedStateTotalDeaths = selectedStateTotalDeaths.reset_index()
+        selectedStateTotalDeaths['Deaths'] = selectedStateTotalDeaths.iloc[:,-1:]
+
+        st.write('Overall Deaths for each selected State:')
+        st.write(selectedStateTotalDeaths)
+
+        deathSelectBar = alt.Chart(selectedStateTotalDeaths).mark_bar().encode(
+            x='Province_State:O',
+            y='Deaths:Q',
+            color= alt.value('steelblue')
+        ).properties(
+            width=700,
+            height=700
+        )
+        st.write(deathSelectBar)
+
+    if userSelectedStates.checkbox('Compare Deaths Overtime: '):
+        st.subheader('Deaths overtime for each State: ')
+        selectDeathsLine = alt.Chart(stateDeathsChart).mark_line().encode(
+            x='variable',
+            y='value',
+            color='Province_State',
+            tooltip=["Province_State:N", "value", "variable"]
+        ).properties(
+            width=900,
+            height=1000
+        )
+        st.write(selectDeathsLine)
+
+    if userSelectedStates.checkbox('Compare Overall Cases: '):
+        selectedStateTotalCases = selectedStateCases.copy()
+        selectedStateTotalCases = selectedStateCases.reset_index()
+        selectedStateTotalCases['Deaths'] = selectedStateTotalCases.iloc[:,-1:]
+
+        st.write('Overall Cases for each selected State:')
+        st.write(selectedStateTotalCases)
+
+        deathSelectBar = alt.Chart(selectedStateTotalCases).mark_bar().encode(
+            x='Province_State:O',
+            y='Deaths:Q',
+            color= alt.value('steelblue')
+        ).properties(
+            width=700,
+            height=700
+        )
+        st.write(deathSelectBar)
+
+    if userSelectedStates.checkbox('Compare Cases Overtime: '):
+        st.write("Cases Overtime")
+        selectCasesLine = alt.Chart(stateCaseChart).mark_line().encode(
+            x='variable',
+            y='value',
+            color='Province_State',
+            tooltip=["Province_State:N", "value", "variable"]
+        ).properties(
+            width=900,
+            height=1000
+        )
+        st.write(selectCasesLine)
+            
+with st.beta_expander('US Death to Case Ratio'):
+    #Container for Death to Case Ratio
+    st.subheader('Ratio of Deaths per Cases Across the United States')
+    ratioDeathCase = st.beta_container()
+    ratioDeathCase.subheader('Ratio of Deaths to Cases in the United States')
+    ratioDeathCase.write(usCaseDeathRatioMap)
     
-    #Container for Death stats
-    if st.checkbox('All Recorded Deaths Across the United States'):
-        allDeaths = st.beta_container()
-        allDeaths.header("Recorded Deaths in the United States")
-
-        if allDeaths.checkbox('View Original Dataframe:'):
-            allDeaths.header("Dataframe of State Cumulative Deaths from COVID-19: ")
-            allDeaths.dataframe(rawDeathsdf)
-        if allDeaths.checkbox('View Simplified Dataframe:'):
-            allDeaths.header("Dataframe of States/Total Deaths from COVID-19: ")
-            allDeaths.dataframe(dfStateTotalDeaths)
-
-        allDeaths.subheader("Deaths from COVID-19 across the United States: ")
-        allDeaths.write(usDeathMap)
-
-        allDeaths.subheader("Chart of States/Deaths (Highlighted is above the National Average)")
-        if allDeaths.checkbox('Sort by Most to Least Deaths'):
-            allDeaths.write(sortedbarChart)
-        else:
-            allDeaths.write(barChart)
-
-        allDeaths.subheader("Graph of Death trends for every State: ")
-        allDeaths.write(deathsAllStates)
-
-
+with st.beta_expander('US Case Data'):
     #Container for Case stats
-    if st.checkbox('All Recorded Cases Across the United States'):
-        allCases = st.beta_container()
-        allCases.header("Recorded Cases Across the United States")
+    allCases = st.beta_container()
+    allCases.header("Recorded Cases Across the United States")
+    if allCases.checkbox('View Original Cases Dataframe:'):
+        allCases.header("Dataframe of State Cumulative Cases from COVID-19: ")
+        allCases.dataframe(raw_cases)
+    if allCases.checkbox('View Simplified Cases Dataframe:'):
+        allCases.header("Dataframe of States/Total Cases from COVID-19: ")
+        allCases.dataframe(dfStateTotalCases)
+        
+    allCases.subheader("Confirmed Cases of COVID-19 Across the United States: ")
+    allCases.write(usCaseMap)
 
-        if allCases.checkbox('View Original Cases Dataframe:'):
-            allCases.header("Dataframe of State Cumulative Cases from COVID-19: ")
-            allCases.dataframe(raw_cases)
-        if allCases.checkbox('View Simplified Cases Dataframe:'):
-            allCases.header("Dataframe of States/Total Cases from COVID-19: ")
-            allCases.dataframe(dfStateTotalCases)
+    allCases.subheader("Chart of States/Cases (Highlighted is above the National Average)")
+    if allCases.checkbox('Sort by Most to Least Cases'):
+        allCases.write(sortedbarChart_case)
+    else:
+        allCases.write(barChart_case)
 
-        allCases.subheader("Confirmed Cases of COVID-19 Across the United States: ")
-        allCases.write(usCaseMap)
-
-        allCases.subheader("Chart of States/Cases (Highlighted is above the National Average)")
-        if allCases.checkbox('Sort by Most to Least Cases'):
-            allCases.write(sortedbarChart_case)
-        else:
-            allCases.write(barChart_case)
-
-        allCases.subheader("Graph of Case trends for every State: ")
-        allCases.write(casesAllStates)
+    allCases.subheader("Graph of Case trends for every State: ")
+    allCases.write(casesAllStates)
     
-    #Container for Ratio stats
-    if st.checkbox('Ratio of Deaths per Cases Across the United States'):
-        ratioDeathCase = st.beta_container()
-        ratioDeathCase.subheader('Ratio of Deaths to Cases in the United States')
-        ratioDeathCase.write(usCaseDeathRatioMap)
+with st.beta_expander('US Death Data'):
+    #Container for death stats
+    allDeaths = st.beta_container()
+    allDeaths.header("Recorded Deaths in the United States")
     
-    if st.checkbox('Select States to compare: '):
-        userSelectedStates = st.beta_container()
-        statesSelected = userSelectedStates.multiselect('What States do you want to compare?', allStates, allStates[0])
+    if allDeaths.checkbox('View Original Dataframe:'):
+        allDeaths.header("Dataframe of State Cumulative Deaths from COVID-19: ")
+        allDeaths.dataframe(rawDeathsdf)
+    if allDeaths.checkbox('View Simplified Dataframe:'):
+        allDeaths.header("Dataframe of States/Total Deaths from COVID-19: ")
+        allDeaths.dataframe(dfStateTotalDeaths)
         
-        selectedStateDeaths = userSelectedStateDeaths(statesSelected)
-        selectedStateCases = userSelectedStateCases(statesSelected)
-        
-            
-        stateDeathsChart = stateDeathsChart(selectedStateDeaths)
-        stateCaseChart = stateCaseChart(selectedStateCases)
-        
-        if userSelectedStates.checkbox('Compare Overall Deaths: '):
-            selectedStateTotalDeaths = selectedStateDeaths.copy()
-            selectedStateTotalDeaths = selectedStateTotalDeaths.reset_index()
-            selectedStateTotalDeaths['Deaths'] = selectedStateTotalDeaths.iloc[:,-1:]
-            
-            st.write('Overall Deaths for each selected State:')
-            st.write(selectedStateTotalDeaths)
-            
-            deathSelectBar = alt.Chart(selectedStateTotalDeaths).mark_bar().encode(
-                x='Province_State:O',
-                y='Deaths:Q',
-                color= alt.value('steelblue')
-            ).properties(
-                width=700,
-                height=700
-            )
-            st.write(deathSelectBar)
-            
-        if userSelectedStates.checkbox('Compare Deaths Overtime: '):
-            st.subheader('Deaths overtime for each State: ')
-            selectDeathsLine = alt.Chart(stateDeathsChart).mark_line().encode(
-                x='variable',
-                y='value',
-                color='Province_State',
-                tooltip=["Province_State:N", "value", "variable"]
-            ).properties(
-                width=900,
-                height=1000
-            )
-            st.write(selectDeathsLine)
-            
-        if userSelectedStates.checkbox('Compare Overall Cases: '):
-            selectedStateTotalCases = selectedStateCases.copy()
-            selectedStateTotalCases = selectedStateCases.reset_index()
-            selectedStateTotalCases['Deaths'] = selectedStateTotalCases.iloc[:,-1:]
-            
-            st.write('Overall Cases for each selected State:')
-            st.write(selectedStateTotalCases)
-            
-            deathSelectBar = alt.Chart(selectedStateTotalCases).mark_bar().encode(
-                x='Province_State:O',
-                y='Deaths:Q',
-                color= alt.value('steelblue')
-            ).properties(
-                width=700,
-                height=700
-            )
-            st.write(deathSelectBar)
-            
-        if userSelectedStates.checkbox('Compare Cases Overtime: '):
-            st.write("Cases Overtime")
-            selectCasesLine = alt.Chart(stateCaseChart).mark_line().encode(
-                x='variable',
-                y='value',
-                color='Province_State',
-                tooltip=["Province_State:N", "value", "variable"]
-            ).properties(
-                width=900,
-                height=1000
-            )
-            st.write(selectCasesLine)
-            
-            
-            
-#
-#if st.sidebar.checkbox('Show Raw Death Data'):
-#    st.write("Raw COVID Death data from Github: ")
-#    st.dataframe(raw)
-#    
-#if st.sidebar.checkbox('Show Raw Case Data'):
-#    st.write("Raw COVID Case data from Github: ")
-#    st.dataframe(raw_cases)
-# df.index[df['BoolCol'] == True].tolist()
+    allDeaths.subheader("Deaths from COVID-19 across the United States: ")
+    allDeaths.write(usDeathMap)
+
+    allDeaths.subheader("Chart of States/Deaths (Highlighted is above the National Average)")
+    if allDeaths.checkbox('Sort by Most to Least Deaths'):
+        allDeaths.write(sortedbarChart)
+    else:
+        allDeaths.write(barChart)
+
+    allDeaths.subheader("Graph of Death trends for every State: ")
+    allDeaths.write(deathsAllStates)
+    
+with st.beta_expander('Worldwide Data'):
+    #Container for world statistics
+    worldDeaths = st.beta_container()
+    worldDeaths.write(worldDeathMap + pois)
+
+with st.beta_expander('View Original Data Sources'):
+    if st.checkbox('Show Raw Death Data'):
+        st.write("Raw COVID Death data from Github: ")
+        st.dataframe(load_raw_deaths_csv())
+
+    if st.checkbox('Show Raw Case Data'):
+        st.write("Raw COVID Case data from Github: ")
+        st.dataframe(load_raw_cases_csv())
+    
+    if st.checkbox('Show World Death Data'):
+        st.write("Raw Worldwide COVID Death data from Github: ")
+        st.dataframe(load_raw_csv_global())
