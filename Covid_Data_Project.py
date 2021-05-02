@@ -6,9 +6,12 @@
 import streamlit as st
 import altair as alt
 import pandas as pd
+import time
 import numpy as np
-import datetime as dt 
+import datetime
 from vega_datasets import data
+from datetime import date,time
+
 
 #Get Recorded US deaths csv from Official Github and return as Pandas dataframe
 st.set_page_config(layout="wide")
@@ -151,6 +154,10 @@ def countryDeathsChart():
     df = df.reset_index('Country/Region')
     return df
 
+##############################
+### Data Setup/Manipulation ##
+##############################
+
 
 # State death dataframe setup
 rawDeathsdf = load_raw_deaths_csv()
@@ -178,16 +185,29 @@ dfCountryLatLong = globalRaw.filter(['Country/Region','Lat','Long'], axis=1)
 dfCountryTotalDeaths = dfCountryTotalDeaths.reset_index()
 dfCountryLatLong['Deaths'] = dfCountryTotalDeaths['Deaths'].copy()
 
-############
-## CHARTS ##
-############
+#State Population versus Cases/Deaths Setup
+dfStatePopulation = rawDeathsdf.filter(['Province_State', 'Population'], axis=1)
+# Sum populations State
+dfStatePopulation = dfStatePopulation.groupby(['Province_State']).sum()
+dfStatePopulation = dfStatePopulation.reset_index()
+
+dfStatePopulationDeathRatio = pd.merge(dfStateTotalDeaths, dfStatePopulation, on='Province_State')
+dfStatePopulationCasesRatio = pd.merge(dfStateTotalCases, dfStatePopulation, on='Province_State')
+
+dfStatePopulationDeathRatio['Ratio'] = dfStatePopulationDeathRatio['Deaths']/dfStatePopulationDeathRatio['Population']
+dfStatePopulationCasesRatio['Ratio'] = dfStatePopulationCasesRatio['Cases']/dfStatePopulationCasesRatio['Population']
+
+########################
+############## CHARTS ##
+########################
+
 # Choropleth map for US deaths
 usDeathMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=['id:N', 'Deaths:O'],
+    tooltip=['Province_State:N','Deaths:O'],
     color='Deaths:Q'
 ).transform_lookup(
     lookup='id',
-    from_=alt.LookupData(dfStateTotalDeaths, 'id', ['Deaths'])
+    from_=alt.LookupData(dfStateTotalDeaths, 'id', ['Deaths', 'Province_State'] )
 ).project(
     type='albersUsa'
 ).properties(
@@ -197,11 +217,11 @@ usDeathMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshap
 
 # Choropleth map for US cases
 usCaseMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=['id:N', 'Cases:O'],
+    tooltip=['Province_State:N', 'Cases:O'],
     color='Cases:Q'
 ).transform_lookup(
     lookup='id',
-    from_=alt.LookupData(dfStateTotalCases, 'id', ['Cases'])
+    from_=alt.LookupData(dfStateTotalCases, 'id', ['Cases','Province_State'])
 ).project(
     type='albersUsa'
 ).properties(
@@ -211,11 +231,37 @@ usCaseMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape
 
 # Choropleth map for US Deaths to Cases Ratio
 usCaseDeathRatioMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
-    tooltip=['Ratio:O'],
+    tooltip=['Province_State:N','Ratio:O'],
     color=alt.Color('Ratio:Q', legend=alt.Legend(format=".0%"))
 ).transform_lookup(
     lookup='id',
-    from_=alt.LookupData(dfStateCaseDeathRatio, 'id', ['Ratio'])
+    from_=alt.LookupData(dfStateCaseDeathRatio, 'id', ['Ratio','Province_State'])
+).project(
+    type='albersUsa'
+).properties(
+    width=900,
+    height=500
+)
+# Choropleth map for US Deaths/Population Ratio
+usDeathPopulationMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
+    tooltip=['Province_State:N','Ratio:O'],
+    color=alt.Color('Ratio:Q', legend=alt.Legend(format=".00%"))
+).transform_lookup(
+    lookup='id',
+    from_=alt.LookupData(dfStatePopulationDeathRatio, 'id', ['Ratio','Province_State'])
+).project(
+    type='albersUsa'
+).properties(
+    width=900,
+    height=500
+)
+# Choropleth map for US Cases/Population Ratio
+usCasePopulationMap = alt.Chart(alt.topo_feature(data.us_10m.url, 'states')).mark_geoshape().encode(
+    tooltip=['Province_State:N','Ratio:O'],
+    color=alt.Color('Ratio:Q', legend=alt.Legend(format=".00%"))
+).transform_lookup(
+    lookup='id',
+    from_=alt.LookupData(dfStatePopulationCasesRatio, 'id', ['Ratio','Province_State'])
 ).project(
     type='albersUsa'
 ).properties(
@@ -286,7 +332,7 @@ deathsAllStatesbase = alt.Chart(deathChartDf).mark_line().encode(
     x='variable',
     y='value',
     color='Province_State:N',
-    tooltip=["Province_State:N", "value"]
+    tooltip=["Province_State:N", "value", "variable"]
 )
 
 deathsAllStatespoints = deathsAllStatesbase.mark_circle().encode(
@@ -309,7 +355,7 @@ casesAllStatesbase = alt.Chart(caseChartDf).mark_line().encode(
     x='variable',
     y='value',
     color='Province_State:N',
-    tooltip=["Province_State:N", "value"]
+    tooltip=["Province_State:N", "value", "variable"]
 )
 
 # Line chart points 
@@ -346,9 +392,9 @@ pois = alt.Chart(dfCountryLatLong).mark_circle().encode(
     size="Deaths"
 )
 
-########################
-# Streamlit App Layout #
-########################
+####################################
+############# Streamlit App Layout #
+####################################
 
 st.title('COVID Data')
 st.header("Visual Analytics Project | Team 7");
@@ -362,81 +408,107 @@ deathCol, caseCol = st.beta_columns(2)
 with st.beta_expander('Select States to compare: '): 
     userSelectedStates = st.beta_container()
     statesSelected = userSelectedStates.multiselect('What States do you want to compare?', allStates, allStates[0])
-
+    
+    userSelectedStates.subheader("Date Range for data")
+    startDate = userSelectedStates.date_input('Start Date', datetime.date(2020, 1, 22))
+    endDate = userSelectedStates.date_input('End Date', datetime.date(2021, 5, 1))
+    domain = [startDate.isoformat(), endDate.isoformat()]
+    
     selectedStateDeaths = userSelectedStateDeaths(statesSelected)
     selectedStateCases = userSelectedStateCases(statesSelected)
 
-
     stateDeathsChart = stateDeathsChart(selectedStateDeaths)
     stateCaseChart = stateCaseChart(selectedStateCases)
-
+    
     if userSelectedStates.checkbox('Compare Overall Deaths: '):
         selectedStateTotalDeaths = selectedStateDeaths.copy()
         selectedStateTotalDeaths = selectedStateTotalDeaths.reset_index()
         selectedStateTotalDeaths['Deaths'] = selectedStateTotalDeaths.iloc[:,-1:]
 
-        st.write('Overall Deaths for each selected State:')
-        st.write(selectedStateTotalDeaths)
-
+        #st.write('Overall Deaths for each selected State:')
+        #st.write(selectedStateTotalDeaths)
+        
         deathSelectBar = alt.Chart(selectedStateTotalDeaths).mark_bar().encode(
-            x='Province_State:O',
-            y='Deaths:Q',
+            x=alt.X('Province_State:O',title='State'),
+            y=alt.Y('Deaths:Q',title='Total Deaths'),
             color= alt.value('steelblue')
         ).properties(
             width=700,
             height=700
+        ).configure_axis(
+            labelFontSize=20,
+            titleFontSize=20
         )
         st.write(deathSelectBar)
 
     if userSelectedStates.checkbox('Compare Deaths Overtime: '):
         st.subheader('Deaths overtime for each State: ')
         selectDeathsLine = alt.Chart(stateDeathsChart).mark_line().encode(
-            x='variable',
-            y='value',
+            x=alt.X('variable',title='Date', scale=alt.Scale(domain=domain)),
+            y=alt.Y('value', title='Total Deaths'),
             color='Province_State',
             tooltip=["Province_State:N", "value", "variable"]
         ).properties(
             width=900,
             height=1000
+        ).interactive(
+        ).configure_axis(
+            labelFontSize=20,
+            titleFontSize=20
         )
         st.write(selectDeathsLine)
 
     if userSelectedStates.checkbox('Compare Overall Cases: '):
+        
         selectedStateTotalCases = selectedStateCases.copy()
         selectedStateTotalCases = selectedStateCases.reset_index()
         selectedStateTotalCases['Deaths'] = selectedStateTotalCases.iloc[:,-1:]
 
-        st.write('Overall Cases for each selected State:')
-        st.write(selectedStateTotalCases)
+        #st.write('Overall Cases for each selected State:')
+        #st.write(selectedStateTotalCases)
 
         deathSelectBar = alt.Chart(selectedStateTotalCases).mark_bar().encode(
-            x='Province_State:O',
-            y='Deaths:Q',
+            x=alt.X('Province_State:O', title='State'),
+            y=alt.Y('Deaths:Q', title='Total Cases'),
             color= alt.value('steelblue')
         ).properties(
             width=700,
             height=700
+        ).configure_axis(
+            labelFontSize=20,
+            titleFontSize=20
         )
         st.write(deathSelectBar)
 
     if userSelectedStates.checkbox('Compare Cases Overtime: '):
-        st.write("Cases Overtime")
+        st.subheader('Cases overtime for each State: ')
         selectCasesLine = alt.Chart(stateCaseChart).mark_line().encode(
-            x='variable',
-            y='value',
+            x=alt.X('variable', title='Date', scale=alt.Scale(domain=domain)),
+            y=alt.Y('value', title='Total Cases'),
             color='Province_State',
             tooltip=["Province_State:N", "value", "variable"]
         ).properties(
             width=900,
             height=1000
-        )
+        ).configure_axis(
+            labelFontSize=20,
+            titleFontSize=20
+        ).interactive()
         st.write(selectCasesLine)
+             
             
-with st.beta_expander('US Death to Case Ratio'):
+with st.beta_expander('US Data Insights'):
     #Container for Death to Case Ratio
     st.subheader('Ratio of Deaths per Cases Across the United States')
     ratioDeathCase = st.beta_container()
     ratioDeathCase.write(usCaseDeathRatioMap)
+    
+    st.subheader('Cases Percentage of State Population')
+    st.write(usCasePopulationMap)
+    
+    st.subheader('Death Percentage of State Population')
+    st.write(usDeathPopulationMap)
+    
     
 with st.beta_expander('US Case Data'):
     #Container for Case stats
