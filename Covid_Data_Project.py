@@ -431,7 +431,8 @@ with st.beta_expander('Select States to compare: '):
         deathSelectBar = alt.Chart(selectedStateTotalDeaths).mark_bar().encode(
             x=alt.X('Province_State:O',title='State'),
             y=alt.Y('Deaths:Q',title='Total Deaths'),
-            color= alt.value('steelblue')
+            color= alt.value('steelblue'),
+            tooltip=["Province_State:N", "Deaths:Q"]
         ).properties(
             width=700,
             height=700
@@ -470,7 +471,8 @@ with st.beta_expander('Select States to compare: '):
         deathSelectBar = alt.Chart(selectedStateTotalCases).mark_bar().encode(
             x=alt.X('Province_State:O', title='State'),
             y=alt.Y('Deaths:Q', title='Total Cases'),
-            color= alt.value('steelblue')
+            color= alt.value('steelblue'),
+            tooltip=["Province_State:N", "Deaths:Q"]
         ).properties(
             width=700,
             height=700
