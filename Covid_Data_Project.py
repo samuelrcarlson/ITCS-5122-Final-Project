@@ -406,7 +406,7 @@ deathCol, caseCol = st.columns(2)
 #caseCol, deathCol = st.columns(2)
 
 with st.expander('Select States to compare: '): 
-    userSelectedStates = st.beta_container()
+    userSelectedStates = st.container()
     statesSelected = userSelectedStates.multiselect('What States do you want to compare?', allStates, allStates[0])
     
     userSelectedStates.subheader("Date Range for data")
@@ -502,7 +502,7 @@ with st.expander('Select States to compare: '):
 with st.expander('US Data Insights'):
     #Container for Death to Case Ratio
     st.subheader('Ratio of Deaths per Cases Across the United States')
-    ratioDeathCase = st.beta_container()
+    ratioDeathCase = st.container()
     ratioDeathCase.write(usCaseDeathRatioMap)
     
     st.subheader('Cases Percentage of State Population')
@@ -514,7 +514,7 @@ with st.expander('US Data Insights'):
     
 with st.expander('US Case Data'):
     #Container for Case stats
-    allCases = st.beta_container()
+    allCases = st.container()
     allCases.header("Recorded Cases Across the United States")
     if allCases.checkbox('View Original Cases Dataframe:'):
         allCases.header("Dataframe of State Cumulative Cases from COVID-19: ")
@@ -537,7 +537,7 @@ with st.expander('US Case Data'):
     
 with st.expander('US Death Data'):
     #Container for death stats
-    allDeaths = st.beta_container()
+    allDeaths = st.container()
     allDeaths.header("Recorded Deaths in the United States")
     
     if allDeaths.checkbox('View Original Dataframe:'):
@@ -561,7 +561,7 @@ with st.expander('US Death Data'):
     
 with st.expander('Worldwide Data'):
     #Container for world statistics
-    worldDeaths = st.beta_container()
+    worldDeaths = st.container()
     worldDeaths.write(worldDeathMap + pois)
 
 with st.expander('View Original Data Sources'):
