@@ -405,7 +405,7 @@ allStates = dfStateTotalDeaths['Province_State'].values.tolist()
 deathCol, caseCol = st.columns(2)
 #caseCol, deathCol = st.columns(2)
 
-with st.beta_expander('Select States to compare: '): 
+with st.expander('Select States to compare: '): 
     userSelectedStates = st.beta_container()
     statesSelected = userSelectedStates.multiselect('What States do you want to compare?', allStates, allStates[0])
     
@@ -499,7 +499,7 @@ with st.beta_expander('Select States to compare: '):
         st.write(selectCasesLine)
              
             
-with st.beta_expander('US Data Insights'):
+with st.expander('US Data Insights'):
     #Container for Death to Case Ratio
     st.subheader('Ratio of Deaths per Cases Across the United States')
     ratioDeathCase = st.beta_container()
@@ -512,7 +512,7 @@ with st.beta_expander('US Data Insights'):
     st.write(usDeathPopulationMap)
     
     
-with st.beta_expander('US Case Data'):
+with st.expander('US Case Data'):
     #Container for Case stats
     allCases = st.beta_container()
     allCases.header("Recorded Cases Across the United States")
@@ -535,7 +535,7 @@ with st.beta_expander('US Case Data'):
     allCases.subheader("Graph of Case trends for every State: ")
     allCases.write(casesAllStates)
     
-with st.beta_expander('US Death Data'):
+with st.expander('US Death Data'):
     #Container for death stats
     allDeaths = st.beta_container()
     allDeaths.header("Recorded Deaths in the United States")
@@ -559,12 +559,12 @@ with st.beta_expander('US Death Data'):
     allDeaths.subheader("Graph of Death trends for every State: ")
     allDeaths.write(deathsAllStates)
     
-with st.beta_expander('Worldwide Data'):
+with st.expander('Worldwide Data'):
     #Container for world statistics
     worldDeaths = st.beta_container()
     worldDeaths.write(worldDeathMap + pois)
 
-with st.beta_expander('View Original Data Sources'):
+with st.expander('View Original Data Sources'):
     if st.checkbox('Show Raw Death Data'):
         st.write("Raw COVID Death data from Github: ")
         st.dataframe(load_raw_deaths_csv())
