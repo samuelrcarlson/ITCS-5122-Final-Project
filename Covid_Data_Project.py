@@ -402,8 +402,8 @@ st.write("Cameron Ahn, Ryan Alian, Colin Braddy, Sam Carlson")
 
 allStates = dfStateTotalDeaths['Province_State'].values.tolist()
 
-deathCol, caseCol = st.beta_columns(2)
-#caseCol, deathCol = st.beta_columns(2)
+deathCol, caseCol = st.columns(2)
+#caseCol, deathCol = st.columns(2)
 
 with st.beta_expander('Select States to compare: '): 
     userSelectedStates = st.beta_container()
